@@ -2,105 +2,92 @@ import streamlit as st
 from ultralytics import YOLO
 from PIL import Image
 import numpy as np
+import cv2
 import os
 
-# --- 1. Konfigurasi Halaman ---
+# ==========================================
+# 1. KONFIGURASI HALAMAN
+# ==========================================
 st.set_page_config(page_title="SkinThesia YOLO", page_icon="🔍", layout="wide")
 
-# --- 2. Load Model (Otomatis) ---
+# ==========================================
+# 2. LOAD MODEL
+# ==========================================
 @st.cache_resource
 def load_model():
-    # Mencari file model hasil training
+    # Pastikan path ini sesuai dengan lokasi hasil training Anda
     path = 'runs/detect/train/weights/best.pt'
     if os.path.exists(path):
-        print("Model custom 'best.pt' ditemukan dan dimuat.")
         return YOLO(path)
     else:
-        print("Model 'best.pt' tidak ditemukan.")
         return None
 
 model = load_model()
 
-# --- 3. Fungsi Helper (Penting!) ---
-# Kita buat fungsi ini agar tidak ada duplikasi kode
-def process_and_display_image(image_source):
-    """
-    Menerima gambar (dari Upload atau Webcam),
-    menjalankan deteksi YOLO, dan menampilkan hasilnya.
-    """
-    try:
-        # Buka gambar
-        img_pil = Image.open(image_source).convert('RGB')
-        img_array = np.array(img_pil)
-
-        with st.spinner("AI sedang memindai..."):
-            # Prediksi YOLO
-            results = model.predict(img_array, conf=0.1)
-            res_plotted = results[0].plot() # Gambar kotak
-            jumlah = len(results[0].boxes)  # Hitung jumlah
-
-        # Tampilkan hasil berdampingan
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image(img_pil, caption="Foto Asli", use_container_width=True)
-        with col2:
-            st.image(res_plotted, caption=f"Hasil Deteksi", use_container_width=True)
-
-        st.divider()
-        st.subheader("📊 Hasil Diagnosa")
-        
-        # Tampilkan metrik
-        st.metric("Jumlah Jerawat Terdeteksi", f"{jumlah} Titik")
-        
-        # Logika Penentuan Status
-        if jumlah == 0:
-            st.success("✅ **Kondisi: BERSIH / NORMAL**")
-            st.write("AI tidak menemukan tanda-tanda jerawat aktif pada wajah.")
-        
-        elif jumlah < 10:
-            st.info("⚠️ **Kondisi: JERAWAT RINGAN**")
-            st.write(f"Terdeteksi {jumlah} titik jerawat. Jaga kebersihan wajah.")
-            
-        elif jumlah < 20:
-            st.warning("🟠 **Kondisi: JERAWAT SEDANG**")
-            st.write(f"Terdeteksi {jumlah} titik jerawat. Perhatikan pola makan dan skincare.")
-            
-        else:
-            st.error("🔴 **Kondisi: JERAWAT PARAH**")
-            st.write(f"Terdeteksi {jumlah} titik jerawat. Disarankan berkonsultasi dengan dokter kulit.")
-    
-    except Exception as e:
-        st.error(f"Terjadi kesalahan saat memproses gambar: {e}")
-
-
-# --- 4. UI Aplikasi ---
-st.title("🔍 Deteksi Jerawat")
+# ==========================================
+# 3. UI APLIKASI (UPLOAD ONLY)
+# ==========================================
+st.title("🔍 SKINTHESIA")
+st.caption("Unggah foto wajah untuk mendeteksi dan menghitung jerawat secara otomatis.")
 
 if model is None:
-    st.error("❌ **Model AI ('best.pt') Tidak Ditemukan!**")
-    st.info("Silakan jalankan `python train_yolo.py` di terminal Anda untuk melatih model terlebih dahulu.")
+    st.error("❌ **Model 'best.pt' Belum Ditemukan!**")
+    st.warning("Silakan jalankan `python train_yolo.py` terlebih dahulu untuk melatih AI Anda.")
 else:
-    # Buat dua tab untuk pilihan input
-    tab1, tab2 = st.tabs(["📤 **Upload Foto**", "📷 **Live Webcam**"])
+    # Container untuk File Uploader
+    with st.container():
+        uploaded_file = st.file_uploader("📂 Upload Foto Wajah (JPG/PNG)", type=['jpg', 'png', 'jpeg'])
 
-    # --- Logika Tab 1: Upload Foto ---
-    with tab1:
-        st.info("Upload foto wajah yang jelas dan terang untuk hasil terbaik.")
-        uploaded_file = st.file_uploader("Upload foto wajah", type=['jpg', 'png', 'jpeg'])
-        
-        if uploaded_file:
-            # Panggil fungsi helper
-            process_and_display_image(uploaded_file)
+    # --- LOGIKA UTAMA ---
+    if uploaded_file:
+        # 1. Buka Gambar
+        img_pil = Image.open(uploaded_file).convert('RGB')
+        img_array = np.array(img_pil)
 
-    # --- Logika Tab 2: Live Webcam ---
-    with tab2:
-        st.info("Arahkan wajah Anda ke kamera dan klik tombol 'Take photo'.")
-        # Widget Kamera Streamlit
-        webcam_photo = st.camera_input("Ambil Foto dari Webcam")
-        
-        if webcam_photo:
-            # Panggil fungsi helper
-            process_and_display_image(webcam_photo)
+        # 2. Buat Kolom untuk Tampilan (Kiri: Asli, Kanan: Hasil)
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.subheader("Foto Asli")
+            st.image(img_pil, use_container_width=True)
+
+        # 3. Proses Deteksi Otomatis (Tanpa Tombol)
+        with st.spinner("AI sedang memindai wajah..."):
+            # conf=0.25: Hanya ambil yg yakin > 25%
+            results = model.predict(img_array, conf=0.15)
+            
+            # Gambar kotak hasil
+            res_plotted = results[0].plot()
+            
+            # Hitung jumlah
+            jumlah_jerawat = len(results[0].boxes)
+
+        with col2:
+            st.subheader("Hasil Analisis AI")
+            st.image(res_plotted, caption="Lokasi Jerawat Terdeteksi", use_container_width=True)
+            
+            st.divider()
+            
+            # Tampilkan Metrik
+            st.metric("Jumlah Titik Jerawat", f"{jumlah_jerawat}")
+
+            # Logika Status (Bisa Anda sesuaikan batas angkanya)
+            if jumlah_jerawat == 0:
+                st.success("✅ **Kondisi: BERSIH / NORMAL**")
+                st.write("Tidak ditemukan tanda-tanda jerawat aktif.")
+            elif jumlah_jerawat < 10:
+                st.info("⚠️ **Kondisi: JERAWAT RINGAN**")
+                st.write("Terdeteksi beberapa titik jerawat. Jaga kebersihan wajah.")
+            elif jumlah_jerawat < 20:
+                st.warning("🟠 **Kondisi: JERAWAT SEDANG**")
+                st.write("Cukup banyak titik jerawat. Perhatikan pola makan dan skincare.")
+            else:
+                st.error("🔴 **Kondisi: JERAWAT PARAH**")
+                st.write("Terdeteksi banyak titik jerawat. Disarankan berkonsultasi dengan dokter.")
+
+    else:
+        # Tampilan awal jika belum ada file
+        st.info("👆 Silakan upload foto wajah di atas untuk memulai.")
 
 st.markdown("---")
-st.caption("Powered by YOLOv8 (Ultralytics) & Streamlit")
+st.caption("Powered by YOLOv8 Object Detection")
