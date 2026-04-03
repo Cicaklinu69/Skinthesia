@@ -4,3 +4,4 @@ roboflow
 pillow
 opencv-python
 numpy
+supabase
